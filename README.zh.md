@@ -1,3 +1,6 @@
+🌐 [English](README.md) | [简体中文](README.zh.md)
+
+---
 # MMdetection3D-Second-flops
 
 mmdet3d-flops-tools 扩展了 MMDetection3D 的 FLOPs 计算器，原生支持体素（voxel）模态输入，能够从配置文件的 sparse_shape 自动构建字典输入（voxels、num_points、coors），适用于 SECOND、PointPillars 等基于体素的检测器。
