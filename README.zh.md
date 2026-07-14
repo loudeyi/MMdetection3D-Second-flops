@@ -23,7 +23,9 @@ choices=['point', 'image', 'multi', 'voxel']
 
 接受3个 shape 参数 `(num_voxels, max_points, num_features)`：
 
-- 从 config 的 `middle_encoder.sparse_shape` 提取稀疏网格尺寸来生成合法的体素坐标
+- 自动检测 config 中的 middle_encoder 类型：
+  - **SparseEncoder** → 使用 `sparse_shape`（如 `[41, 1600, 1408]`）生成 3D 稀疏卷积的体素坐标
+  - **PointPillarsScatter** → 使用 `output_shape`（如 `[496, 432]`）生成 2D BEV pillar 坐标
 - 通过 `input_constructor` 闭包构建完整的 voxel 输入 dict：
 
 ```python
@@ -38,46 +40,88 @@ choices=['point', 'image', 'multi', 'voxel']
 }
 ```
 
-- coors 格式 `(batch_idx, z_idx, y_idx, x_idx)`，与 SparseEncoder 文档一致
+- coors 格式 `(batch_idx, z_idx, y_idx, x_idx)`，与 SparseEncoder / PointPillarsScatter 文档一致
 
 ### 3. 同时修复了 `point` 和 `image` modality
 
-同样改用 `input_constructor` 构建正确的 dict 输入格式，避免裸 tensor 传入模型导致类型错误。
+同样改用 `input_constructor` 构建正确的 dict 输入格式：
+- `point`：返回 `{'inputs': {'points': [tensor]}}`
+- `image`：返回 `{'inputs': {'imgs': tensor}}`
 
-## 测试命令
+### 4. 新增 `--out` 日志输出选项
+
+新增 `--out` 参数，可将完整的 FLOPs 计算日志（含逐层明细）输出到文件，同时保留终端打印：
 
 ```bash
-conda activate openmmlab
-cd /path/to/mmdetection3d
+python tools/analysis_tools/get_flops.py <config> --modality voxel \
+    --shape 40000 5 4 --out flops_log.txt
+```
+
+## 测试结果
+
+三种输入模态均在真实模型上验证通过：
+
+### Voxel: SECOND
+
+```bash
 python tools/analysis_tools/get_flops.py \
     configs/second/second_hv_secfpn_8xb6-80e_kitti-3d-3class.py \
     --shape 40000 5 4 --modality voxel
 ```
 
-## 测试结果
+| 指标 | 数值 |
+|------|------|
+| Input Shape | (40000, 5, 4) |
+| FLOPs | 70.07 GFLOPs |
+| Params | 5.33 M |
 
+### Voxel: PointPillars
+
+```bash
+python tools/analysis_tools/get_flops.py \
+    configs/pointpillars/pointpillars_hv_secfpn_8xb6-160e_kitti-3d-3class.py \
+    --shape 16000 32 4 --modality voxel
 ```
-==============================
-Input shape: (40000, 5, 4)
-Flops: 70.07 GFLOPs
-Params: 5.33 M
-==============================
+
+| 指标 | 数值 |
+|------|------|
+| Input Shape | (16000, 32, 4) |
+| FLOPs | 34.72 GFLOPs |
+| Params | 4.83 M |
+
+### Point: 3DSSD
+
+```bash
+python tools/analysis_tools/get_flops.py \
+    configs/3dssd/3dssd_4xb4_kitti-3d-car.py \
+    --shape 16384 4 --modality point
 ```
 
-模型各模块 FLOPs/Params 分布：
+| 指标 | 数值 |
+|------|------|
+| Input Shape | (16384, 4) |
+| FLOPs | 16.03 GFLOPs |
+| Params | 2.51 M |
 
-| 模块 | FLOPs | Params |
-|------|-------|--------|
-| SparseEncoder (middle_encoder) | 0.256 GFLOPs | 0.001 M |
-| SECOND (backbone) | 65.0 GFLOPs | 4.28 M |
-| SECONDFPN (neck) | 3.51 GFLOPs | 0.30 M |
-| Anchor3DHead (bbox_head) | 1.30 GFLOPs | 0.037 M |
+### Image: PGD
+
+```bash
+python tools/analysis_tools/get_flops.py \
+    configs/pgd/pgd_r101-caffe_fpn_head-gn_4xb3-4x_kitti-mono3d.py \
+    --shape 375 1242 --modality image
+```
+
+| 指标 | 数值 |
+|------|------|
+| Input Shape | (3, 375, 1242) |
+| FLOPs | 403.09 GFLOPs |
+| Params | 54.72 M |
 
 ## 使用说明
 
 ### voxel modality
 
-用于体素输入的模型（如 SECOND、VoxelNet、CenterPoint 等）：
+用于体素输入的模型（如 SECOND、VoxelNet、PointPillars、CenterPoint 等）：
 
 ```bash
 python tools/analysis_tools/get_flops.py <config> \
@@ -91,7 +135,7 @@ python tools/analysis_tools/get_flops.py <config> \
 
 ### point modality
 
-用于点云直接输入的模型：
+用于点云直接输入的模型（如 3DSSD、PointRCNN、VoteNet 等）：
 
 ```bash
 python tools/analysis_tools/get_flops.py <config> \
@@ -101,10 +145,18 @@ python tools/analysis_tools/get_flops.py <config> \
 
 ### image modality
 
-用于图像输入的模型：
+用于图像输入的模型（如 FCOS3D、PGD、SMOKE 等）：
 
 ```bash
 python tools/analysis_tools/get_flops.py <config> \
     --modality image \
     --shape <height> <width>
+```
+
+### 保存日志到文件
+
+```bash
+python tools/analysis_tools/get_flops.py <config> \
+    --modality voxel --shape 40000 5 4 \
+    --out logs/flops_second.txt
 ```
