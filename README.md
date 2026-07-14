@@ -45,7 +45,7 @@ Both now use `input_constructor` to build the correct dict input format, avoidin
 
 ```bash
 conda activate openmmlab
-cd /home/hzh/mmdetection3d
+cd /path/to/mmdetection3d
 python tools/analysis_tools/get_flops.py \
     configs/second/second_hv_secfpn_8xb6-80e_kitti-3d-3class.py \
     --shape 40000 5 4 --modality voxel
