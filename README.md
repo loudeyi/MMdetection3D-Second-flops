@@ -1,28 +1,27 @@
 # MMdetection3D-Second-flops
+
 mmdet3d-flops-tools extends MMDetection3D's FLOPs calculator with native voxel modality support, automatically constructing dictionary inputs (voxels, num_points, coors) from config's sparse_shape for voxel-based detectors like SECOND and PointPillars.
 
-# get_flops.py 修改说明
+## Root Cause
 
-## 问题根因
+`get_model_complexity_info` calls `model(input_tensor)`, but mmdet3d models (including VoxelNet/SECOND) expect dict-format input: `model(inputs={'voxels': {...}})`. The previous code only created a bare tensor and passed it to the model, which failed for voxel-based models.
 
-`get_model_complexity_info` 会调用 `model(input_tensor)`，但 mmdet3d 的模型（包括 VoxelNet/SECOND）期望的输入格式是 dict：`model(inputs={'voxels': {...}})`。之前的代码仅仅创建一个裸 tensor 传给模型，无法适配体素输入模型。
+## Changes
 
-## 修改点
+### 1. Added `voxel` modality (line 29)
 
-### 1. 新增 `voxel` modality（第29行）
-
-`--modality` choices 增加 `'voxel'`：
+`--modality` choices now include `'voxel'`:
 
 ```python
 choices=['point', 'image', 'multi', 'voxel']
 ```
 
-### 2. voxel 输入处理（第90-130行）
+### 2. Voxel input handling (lines 90-130)
 
-接受3个 shape 参数 `(num_voxels, max_points, num_features)`：
+Accepts 3 shape parameters `(num_voxels, max_points, num_features)`:
 
-- 从 config 的 `middle_encoder.sparse_shape` 提取稀疏网格尺寸来生成合法的体素坐标
-- 通过 `input_constructor` 闭包构建完整的 voxel 输入 dict：
+- Extracts `sparse_shape` from config's `middle_encoder` to generate valid voxel coordinates
+- Uses an `input_constructor` closure to build the complete voxel input dict:
 
 ```python
 {
@@ -36,13 +35,13 @@ choices=['point', 'image', 'multi', 'voxel']
 }
 ```
 
-- coors 格式 `(batch_idx, z_idx, y_idx, x_idx)`，与 SparseEncoder 文档一致
+- Coors format: `(batch_idx, z_idx, y_idx, x_idx)`, consistent with the SparseEncoder documentation
 
-### 3. 同时修复了 `point` 和 `image` modality
+### 3. Also fixed `point` and `image` modalities
 
-同样改用 `input_constructor` 构建正确的 dict 输入格式，避免裸 tensor 传入模型导致类型错误。
+Both now use `input_constructor` to build the correct dict input format, avoiding type errors from passing bare tensors.
 
-## 测试命令
+## Test Command
 
 ```bash
 conda activate openmmlab
@@ -52,7 +51,7 @@ python tools/analysis_tools/get_flops.py \
     --shape 40000 5 4 --modality voxel
 ```
 
-## 测试结果
+## Test Results
 
 ```
 ==============================
@@ -62,20 +61,20 @@ Params: 5.33 M
 ==============================
 ```
 
-模型各模块 FLOPs/Params 分布：
+Per-module FLOPs/Params breakdown:
 
-| 模块 | FLOPs | Params |
-|------|-------|--------|
+| Module | FLOPs | Params |
+|--------|-------|--------|
 | SparseEncoder (middle_encoder) | 0.256 GFLOPs | 0.001 M |
 | SECOND (backbone) | 65.0 GFLOPs | 4.28 M |
 | SECONDFPN (neck) | 3.51 GFLOPs | 0.30 M |
 | Anchor3DHead (bbox_head) | 1.30 GFLOPs | 0.037 M |
 
-## 使用说明
+## Usage
 
 ### voxel modality
 
-用于体素输入的模型（如 SECOND、VoxelNet、CenterPoint 等）：
+For voxel-based models (e.g., SECOND, VoxelNet, CenterPoint):
 
 ```bash
 python tools/analysis_tools/get_flops.py <config> \
@@ -83,13 +82,13 @@ python tools/analysis_tools/get_flops.py <config> \
     --shape <num_voxels> <max_points> <num_features>
 ```
 
-- `num_voxels`: 体素数量
-- `max_points`: 每个体素内最大点数
-- `num_features`: 每个点的特征数（如 x, y, z, intensity = 4）
+- `num_voxels`: Number of voxels
+- `max_points`: Maximum points per voxel
+- `num_features`: Features per point (e.g., x, y, z, intensity = 4)
 
 ### point modality
 
-用于点云直接输入的模型：
+For point-cloud models:
 
 ```bash
 python tools/analysis_tools/get_flops.py <config> \
@@ -99,11 +98,10 @@ python tools/analysis_tools/get_flops.py <config> \
 
 ### image modality
 
-用于图像输入的模型：
+For image-based models:
 
 ```bash
 python tools/analysis_tools/get_flops.py <config> \
     --modality image \
     --shape <height> <width>
 ```
-
